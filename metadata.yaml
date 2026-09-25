@@ -2,10 +2,10 @@ name: astrbot_plugin_nest_diary_connector
 display_name: 小窝
 short_desc: 给 bot 使用的私有小窝框架，内置 WebUI、模块化数据目录和工具层。
 desc: 小窝是 AstrBot 的私有空间框架。日记只是其中一个官方模块，后续可以继续扩展人物印象、媒体归档、前端样式、自定义模块和外部工具接入。
-help: 默认使用 embedded 模式，由插件启动小窝 WebUI。框架数据放在 framework/，功能模块数据放在 modules/<module-id>/，自定义前端放在 framework/user_custom/webui/。
-version: v0.5.23
+help: 在 AstrBot 插件页打开内置小窝 WebUI。框架数据放在 framework/，功能模块数据放在 modules/<module-id>/，自定义前端放在 framework/user_custom/webui/。
+version: v0.6.0
 author: 百岁老太
 repo: https://github.com/zzz27578/astrbot-plugin-nest-diary-connector
-astrbot_version: ">=4.0.0"
+astrbot_version: ">=4.24.2,<5"
 support_platforms:
   - aiocqhttp

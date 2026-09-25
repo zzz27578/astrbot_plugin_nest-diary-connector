@@ -2,7 +2,7 @@
   "id": "nest-night-atelier",
   "name": "夜间工作室",
   "type": "appearance",
-  "version": "0.5.23",
+  "version": "0.6.0",
   "description": "温柔深色、暖琥珀与蓝绿色点缀，适合夜间整理和长期维护。",
   "feature_tags": ["webui-appearance", "official-global-appearance"],
   "appearance_scope": "global",

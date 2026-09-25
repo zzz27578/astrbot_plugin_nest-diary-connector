@@ -8,7 +8,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 from nest_diary_web.models import DiaryEntry, PersonImpression
-from nest_diary_web.paths import NestPaths
+from nest_diary_web.paths import NestPaths, atomic_write_text
 
 
 class ImpressionService:
@@ -67,10 +67,7 @@ class ImpressionService:
         impression.affinity = max(1, min(int(impression.affinity), 5))
         impression.confidence = max(1, min(int(impression.confidence), 5))
         path = self._person_path(impression.name)
-        path.write_text(
-            json.dumps(asdict(impression), ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
+        atomic_write_text(path, json.dumps(asdict(impression), ensure_ascii=False, indent=2))
         return impression
 
     def _apply_identity_strategy(self, impression: PersonImpression, strategy: str, source_chat: str = "") -> PersonImpression:

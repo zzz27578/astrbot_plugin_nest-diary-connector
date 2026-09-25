@@ -5,7 +5,7 @@ import shutil
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 
-from nest_diary_web.paths import NestPaths, safe_package_id
+from nest_diary_web.paths import NestPaths, safe_package_id, atomic_write_text
 
 
 @dataclass
@@ -352,7 +352,7 @@ class NotebookService:
     def _save(self, items: dict[str, DiaryNotebook]) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         payload = {"items": [asdict(item) for item in sorted(items.values(), key=lambda item: item.id)]}
-        self.path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        atomic_write_text(self.path, json.dumps(payload, ensure_ascii=False, indent=2))
 
     def _name_from_origin(self, origin_umo: str, fallback: str) -> str:
         if not origin_umo:

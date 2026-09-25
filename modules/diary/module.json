@@ -2,7 +2,7 @@
   "id": "diary",
   "name": "日记",
   "type": "module",
-  "version": "0.5.23",
+  "version": "0.6.0",
   "description": "记录、查看和整理日记，也可以在日记里引用已保存的媒体。",
   "feature_tags": ["diary-core"],
   "replaces": [],

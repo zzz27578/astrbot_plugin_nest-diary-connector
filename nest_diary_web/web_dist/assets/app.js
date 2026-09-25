@@ -1,4 +1,4 @@
-const APP_VERSION = "0.5.23";
+const APP_VERSION = "0.6.0";
 const PLUGIN_PAGE_BRIDGE = window.AstrBotPluginPage || null;
 const PLUGIN_PAGE_MODULE_URL = new URL(import.meta.url);
 let pluginPageContext = null;

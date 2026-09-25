@@ -46,11 +46,12 @@ Available tools:
 
 Use this path for: "remember", "diary", "what happened", "did we", "yesterday", "that time", person names, project names, mood/event clues.
 
-1. If the user gave an exact date, call `read_diary(date)`.
-2. If the user gave a vague time or topic, call `search_diary(query, top_k=5-8)`.
-3. Treat `search_diary` results as brief snippets. Do not ask for or paste full diary entries unless details are needed.
-4. Read only the most relevant date with `read_diary` when the search result is not enough.
-5. Answer with the evidence level:
+1. If the user is recalling a specific fact (an account hint, a promise, a preference, a quote, a to-do), call `search_memos(query)` first. Memos are short and exact, so this is the cheapest hit.
+2. If memos have nothing and the user gave an exact date, call `read_diary(date)`.
+3. If the user gave a vague time or topic, call `search_diary(query, top_k=5-8)`.
+4. Treat `search_diary` results as brief snippets. Do not ask for or paste full diary entries unless details are needed.
+5. Read only the most relevant date with `read_diary` when the search result is not enough.
+6. Answer with the evidence level:
    - Confirmed: diary content directly supports it.
    - Likely: search result points to it but details are incomplete.
    - Unknown: no relevant diary evidence was found.
@@ -136,7 +137,7 @@ First search the relevant topic. Then read only dates needed to support the summ
 Use this path for: "记一下", "备忘录", "便签", account hints, password hints, quotes, a short chat snippet, a to-do, or a phrase the user/bot wants to preserve without writing a whole diary.
 
 1. If the user explicitly asks to save a short item, call `write_memo`.
-2. If the content contains account, password, token, key, private contact, private address, or sensitive personal information, set `sensitive=true`.
+2. If the content contains account, password, token, key, private contact, private address, or sensitive personal information, set `sensitive=true`. Private memos can only be written, read, or deleted by the nest admin; when a user has private information to keep, suggest saving it as a private memo instead of putting it into a diary.
 3. Use `source_chat` or source fields when known so later retrieval can tell where the note came from.
 4. Add compact tags such as `账号`, `名言`, `待办`, `聊天片段`, or project names.
 5. If the memo was saved autonomously by the bot, use recorder/source values that make that clear. If the current policy says review, expect the tool layer to tag it for review.

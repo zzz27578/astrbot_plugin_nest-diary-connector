@@ -46,7 +46,7 @@ from .version_service import VersionService
 from .web.routes import create_web_router, mount_static
 from .web_auth import WebSessionAuth
 
-APP_VERSION = "0.5.23"
+APP_VERSION = "0.6.0"
 settings = load_settings()
 app = FastAPI(title="Nest Service", version=APP_VERSION)
 WEB_DIST_DIR = Path(__file__).resolve().parent / "web_dist"
@@ -577,8 +577,9 @@ def _download_module_zip(source_url: str, max_bytes: int = 24 * 1024 * 1024) -> 
 
 
 def _safe_zip_parts(name: str) -> tuple[str, ...] | None:
-    parts = Path(name).parts
-    if not parts or any(part in {"", ".", ".."} for part in parts):
+    # pathlib would honor "/x" and "C:/x" as absolute, so split zip names manually and reject anchors.
+    parts = tuple(name.replace("\\", "/").split("/"))
+    if not parts or any(part in {"", ".", ".."} or ":" in part for part in parts):
         return None
     return parts
 
@@ -615,20 +616,13 @@ def _module_install_target(manifest: dict, ui_settings: ServiceUiSettings) -> tu
     return module_id, paths.modules_dir / module_id
 
 
+MODULE_MAX_UNPACKED_BYTES = 64 * 1024 * 1024
+
+
 def _extract_module_zip(payload: bytes, target: Path, root_parts: tuple[str, ...], overwrite: bool) -> dict:
-    backup_dir = ""
-    if target.exists():
-        if not overwrite:
-            raise HTTPException(status_code=409, detail=f"模块 {target.name} 已存在。请先备份后覆盖，或换一个模块 ID。")
-        backup_root = paths.root / "imports" / "module-install-backups" / _timestamp_label()
-        backup_target = backup_root / target.name
-        backup_target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copytree(target, backup_target)
-        shutil.rmtree(target)
-        backup_dir = str(backup_target)
-    target.mkdir(parents=True, exist_ok=True)
-    installed = 0
     with zipfile.ZipFile(io.BytesIO(payload)) as archive:
+        planned: list[tuple[zipfile.ZipInfo, tuple[str, ...]]] = []
+        unpacked_bytes = 0
         for member in archive.infolist():
             if member.is_dir():
                 continue
@@ -641,13 +635,32 @@ def _extract_module_zip(payload: bytes, target: Path, root_parts: tuple[str, ...
                 relative = parts[len(root_parts) :]
             else:
                 relative = parts
-            if not relative or any(part in {"", ".", ".."} for part in relative):
+            if not relative:
                 raise HTTPException(status_code=400, detail=f"模块包包含危险路径：{member.filename}")
+            unpacked_bytes += member.file_size
+            planned.append((member, relative))
+        if unpacked_bytes > MODULE_MAX_UNPACKED_BYTES:
+            raise HTTPException(status_code=400, detail="模块包解压后超过 64MB，请精简后再安装。")
+
+        backup_dir = ""
+        if target.exists():
+            if not overwrite:
+                raise HTTPException(status_code=409, detail=f"模块 {target.name} 已存在。请先备份后覆盖，或换一个模块 ID。")
+            backup_root = paths.root / "imports" / "module-install-backups" / _timestamp_label()
+            backup_target = backup_root / target.name
+            backup_target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copytree(target, backup_target)
+            shutil.rmtree(target)
+            backup_dir = str(backup_target)
+        target.mkdir(parents=True, exist_ok=True)
+        target_root = target.resolve()
+        for member, relative in planned:
             destination = target.joinpath(*relative)
+            if not destination.resolve().is_relative_to(target_root):
+                raise HTTPException(status_code=400, detail=f"模块包包含危险路径：{member.filename}")
             destination.parent.mkdir(parents=True, exist_ok=True)
             destination.write_bytes(archive.read(member))
-            installed += 1
-    return {"installed_files": installed, "backup_dir": backup_dir}
+    return {"installed_files": len(planned), "backup_dir": backup_dir}
 
 
 def _appearance_conflicts(ui_settings: ServiceUiSettings, appearance: list[dict]) -> list[dict]:
@@ -888,7 +901,7 @@ async def read_diary(
 ):
     try:
         entry = diary_service.read_by_date(date, notebook_id=notebook_id)
-    except FileNotFoundError:
+    except (FileNotFoundError, ValueError):
         raise HTTPException(status_code=404, detail="Diary entry not found") from None
     return {
         "date": entry.date,
@@ -1343,7 +1356,7 @@ async def ui_list_diary(notebook_id: str = "", _session: None = Depends(require_
 async def ui_read_diary(date: str, notebook_id: str = "default", _session: None = Depends(require_web_session)):
     try:
         return _entry_payload(diary_service.read_by_date(date, notebook_id=notebook_id))
-    except FileNotFoundError:
+    except (FileNotFoundError, ValueError):
         raise HTTPException(status_code=404, detail="Diary entry not found") from None
 
 

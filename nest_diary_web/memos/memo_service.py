@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from nest_diary_web.models import MemoEntry
-from nest_diary_web.paths import NestPaths, safe_package_id
+from nest_diary_web.paths import NestPaths, safe_package_id, atomic_write_text
 
 
 class MemoService:
@@ -218,9 +218,7 @@ class MemoService:
             "updated_at": self._now(),
             "items": [asdict(item) for item in items],
         }
-        tmp = self.path.with_suffix(".json.tmp")
-        tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-        tmp.replace(self.path)
+        atomic_write_text(self.path, json.dumps(payload, ensure_ascii=False, indent=2))
 
     def _from_dict(self, data: dict) -> MemoEntry:
         return MemoEntry(

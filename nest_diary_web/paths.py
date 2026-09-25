@@ -1,12 +1,41 @@
 ﻿from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
+import os
 import shutil
 import re
+import time
+import uuid
 
 
 SAFE_ID_RE = re.compile(r"[^A-Za-z0-9_.-]+")
+
+
+def normalize_date(value: str) -> str:
+    # Dates become directory names, so anything but a real YYYY-MM-DD could escape the data dir.
+    text = str(value or "").strip()
+    try:
+        return datetime.strptime(text, "%Y-%m-%d").strftime("%Y-%m-%d")
+    except ValueError:
+        raise ValueError(f"日期格式必须是 YYYY-MM-DD：{text}") from None
+
+
+def atomic_write_text(path: Path, text: str) -> None:
+    # The bot loop and the WebUI thread share these files: readers must never see a truncated write.
+    tmp = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
+    tmp.write_text(text, encoding="utf-8")
+    for attempt in range(20):
+        try:
+            os.replace(tmp, path)
+            return
+        except PermissionError:
+            # Windows refuses to replace a file another thread has open for reading; it frees up quickly.
+            if attempt == 19:
+                tmp.unlink(missing_ok=True)
+                raise
+            time.sleep(0.02)
 
 
 def safe_package_id(value: str, fallback: str = "default") -> str:
@@ -96,12 +125,18 @@ class NestPaths:
 
     def diary_file_for_notebook(self, notebook_id: str, date: str) -> Path:
         notebook_id = safe_package_id(notebook_id)
+        date = normalize_date(date)
         year, month, _day = date.split("-")
         return self.diary_entries_dir_for_notebook(notebook_id) / year / month / f"{date}.md"
 
     def revision_dir_for_notebook(self, notebook_id: str, date: str) -> Path:
         notebook_id = safe_package_id(notebook_id)
+        date = normalize_date(date)
         return self.revisions_dir / notebook_id / date[:4] / date[5:7] / date
+
+    def legacy_diary_file(self, date: str) -> Path:
+        date = normalize_date(date)
+        return self.diary_dir / date[:4] / date[5:7] / f"{date}.md"
 
     def ensure_all(self) -> None:
         for path in [

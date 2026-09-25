@@ -2,7 +2,7 @@
   "id": "memos",
   "name": "备忘录",
   "type": "module",
-  "version": "0.5.23",
+  "version": "0.6.0",
   "description": "用纸条板保存账号提示、聊天片段、名言、待办和 bot 认为值得留下的琐碎记忆。",
   "author": "Nest Diary Connector",
   "ui_category": "core",

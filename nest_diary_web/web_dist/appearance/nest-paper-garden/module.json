@@ -2,7 +2,7 @@
   "id": "nest-paper-garden",
   "name": "纸庭",
   "type": "appearance",
-  "version": "0.5.23",
+  "version": "0.6.0",
   "description": "温和纸感、低饱和绿与暖白，适合长时间阅读日记和整理记忆。",
   "feature_tags": ["webui-appearance", "official-global-appearance"],
   "appearance_scope": "global",

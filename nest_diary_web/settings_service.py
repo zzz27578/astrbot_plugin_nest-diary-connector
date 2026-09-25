@@ -1,11 +1,12 @@
 ﻿from __future__ import annotations
 
+import copy
 import json
 import secrets
 from dataclasses import asdict
 
 from nest_diary_web.models import SecuritySettings, ServiceUiSettings
-from nest_diary_web.paths import NestPaths
+from nest_diary_web.paths import NestPaths, atomic_write_text
 
 
 class ServiceSettingsStore:
@@ -13,21 +14,27 @@ class ServiceSettingsStore:
         self.paths = paths
         self.paths.ensure_all()
         self.path = self.paths.settings_dir / "service-ui.json"
+        self._cache: tuple[tuple[int, int, int], ServiceUiSettings] | None = None
 
     def load(self) -> ServiceUiSettings:
-        if not self.path.exists():
+        try:
+            stat = self.path.stat()
+        except FileNotFoundError:
             return self._normalize(ServiceUiSettings())
-        data = json.loads(self.path.read_text(encoding="utf-8"))
-        defaults = asdict(ServiceUiSettings())
-        defaults.update(data)
-        return self._normalize(ServiceUiSettings(**defaults))
+        # Saves replace the file atomically, so st_ino changes even when coarse Windows mtimes do not.
+        key = (stat.st_ino, stat.st_mtime_ns, stat.st_size)
+        if self._cache is None or self._cache[0] != key:
+            data = json.loads(self.path.read_text(encoding="utf-8"))
+            defaults = asdict(ServiceUiSettings())
+            defaults.update(data)
+            self._cache = (key, self._normalize(ServiceUiSettings(**defaults)))
+        # Callers mutate and re-save what they get, so never hand out the cached instance itself.
+        return copy.deepcopy(self._cache[1])
 
     def save(self, settings: ServiceUiSettings) -> ServiceUiSettings:
         settings = self._normalize(settings)
-        self.path.write_text(
-            json.dumps(asdict(settings), ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
+        atomic_write_text(self.path, json.dumps(asdict(settings), ensure_ascii=False, indent=2))
+        self._cache = None
         return settings
 
     def _normalize(self, settings: ServiceUiSettings) -> ServiceUiSettings:
@@ -230,10 +237,7 @@ class SecuritySettingsStore:
 
     def save(self, settings: SecuritySettings) -> SecuritySettings:
         settings.admin_password = settings.admin_password or self.default_admin_password
-        self.path.write_text(
-            json.dumps(asdict(settings), ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
+        atomic_write_text(self.path, json.dumps(asdict(settings), ensure_ascii=False, indent=2))
         return settings
 
     def update(

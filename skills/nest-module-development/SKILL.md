@@ -7,7 +7,7 @@ description: Use this skill whenever the agent or a developer needs to create, e
 
 小窝 is a framework. Diary, impressions, media and memos are just official modules on top of it. This skill is the stable path for adding a new one.
 
-Everything here describes contracts that exist in code as of `0.5.23`. Do not invent fields.
+Everything here describes contracts that exist in code as of `0.6.0`. Do not invent fields.
 
 ## Decide the runtime first
 

@@ -7,7 +7,7 @@ import shutil
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from nest_diary_web.paths import NestPaths
+from nest_diary_web.paths import NestPaths, normalize_date, atomic_write_text
 
 try:
     from PIL import Image
@@ -62,7 +62,7 @@ class MediaService:
         else:
             manifest["assets"].append(record)
         manifest_path.parent.mkdir(parents=True, exist_ok=True)
-        manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+        atomic_write_text(manifest_path, json.dumps(manifest, ensure_ascii=False, indent=2))
         return record
 
     def _sha256(self, path: Path) -> str:
@@ -76,6 +76,7 @@ class MediaService:
         return self.paths.media_dir / "blobs" / "sha256" / digest[:2] / digest[2:4] / f"{digest}{suffix}"
 
     def _manifest_path(self, date: str) -> Path:
+        date = normalize_date(date)
         year, month, _day = date.split("-")
         return self.paths.media_dir / "by-date" / year / month / date / "manifest.json"
 
@@ -323,7 +324,7 @@ class MediaService:
                         updated = asset
                         changed = True
                 if changed:
-                    path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+                    atomic_write_text(path, json.dumps(manifest, ensure_ascii=False, indent=2))
         if not updated:
             raise ValueError("Media asset not found")
         return updated
@@ -336,7 +337,7 @@ class MediaService:
             "asset_locations": organization.get("asset_locations", {}),
             "trash": organization.get("trash", []),
         }
-        path.write_text(json.dumps(normalized, ensure_ascii=False, indent=2), encoding="utf-8")
+        atomic_write_text(path, json.dumps(normalized, ensure_ascii=False, indent=2))
 
     def _organization_path(self) -> Path:
         return self.paths.media_dir / "organization.json"
@@ -356,7 +357,7 @@ class MediaService:
                 ]
                 if len(manifest["assets"]) != before:
                     found = True
-                    path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+                    atomic_write_text(path, json.dumps(manifest, ensure_ascii=False, indent=2))
         blob = self.find_blob(digest)
         if blob:
             blob.unlink(missing_ok=True)

@@ -14,8 +14,8 @@ class PluginPageTest(unittest.TestCase):
         webui_css = ROOT / "nest_diary_web" / "web_dist" / "assets" / "app.css"
 
         self.assertIn("/api/plugin/page/bridge-sdk.js", index)
-        self.assertIn('src="./assets/app.js?ui=0.5.23"', index)
-        self.assertIn('href="./assets/app.css?ui=0.5.23"', index)
+        self.assertIn('src="./assets/app.js?ui=0.6.0"', index)
+        self.assertIn('href="./assets/app.css?ui=0.6.0"', index)
         self.assertEqual(page_script.read_bytes(), webui_script.read_bytes())
         self.assertEqual(page_css.read_bytes(), webui_css.read_bytes())
 
@@ -49,7 +49,7 @@ class PluginPageTest(unittest.TestCase):
     def test_astrbot_bridge_unwrap_keeps_proxy_envelope(self) -> None:
         proxy_result = {
             "ok": True,
-            "data": {"version": "0.5.23"},
+            "data": {"version": "0.6.0"},
             "web_host": "0.0.0.0",
             "web_port": 28080,
         }
@@ -57,7 +57,7 @@ class PluginPageTest(unittest.TestCase):
         bridge_value = handler_response.get("data", handler_response)
 
         self.assertTrue(bridge_value["ok"])
-        self.assertEqual(bridge_value["data"]["version"], "0.5.23")
+        self.assertEqual(bridge_value["data"]["version"], "0.6.0")
         self.assertEqual(bridge_value["web_port"], 28080)
 
     def test_proxy_path_allowlist_blocks_external_urls(self) -> None:

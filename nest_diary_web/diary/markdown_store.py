@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 from nest_diary_web.models import DiaryEntry
-from nest_diary_web.paths import NestPaths
+from nest_diary_web.paths import NestPaths, atomic_write_text
 
 
 class MarkdownDiaryStore:
@@ -36,13 +36,13 @@ class MarkdownDiaryStore:
         for key, value in frontmatter.items():
             lines.append(f"{key}: {json.dumps(value, ensure_ascii=False)}")
         lines.extend(["---", "", f"# {entry.normalized_title()}", "", entry.body.rstrip(), ""])
-        path.write_text("\n".join(lines), encoding="utf-8")
+        atomic_write_text(path, "\n".join(lines))
         return path
 
     def read(self, date: str, notebook_id: str = "default") -> DiaryEntry:
         path = self.paths.diary_file_for_notebook(notebook_id, date)
         if not path.exists() and notebook_id == "default":
-            path = self.paths.diary_dir / date[:4] / date[5:7] / f"{date}.md"
+            path = self.paths.legacy_diary_file(date)
         text = path.read_text(encoding="utf-8")
         _prefix, meta_text, body_text = text.split("---", 2)
         meta = {}
@@ -102,7 +102,7 @@ class MarkdownDiaryStore:
     def delete(self, date: str, notebook_id: str = "default") -> bool:
         path = self.paths.diary_file_for_notebook(notebook_id, date)
         if not path.exists() and notebook_id == "default":
-            path = self.paths.diary_dir / date[:4] / date[5:7] / f"{date}.md"
+            path = self.paths.legacy_diary_file(date)
         if not path.exists():
             return False
         path.unlink()

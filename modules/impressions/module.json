@@ -2,7 +2,7 @@
   "id": "impressions",
   "name": "人物印象",
   "type": "module",
-  "version": "0.5.23",
+  "version": "0.6.0",
   "description": "保存人物印象，并可在写完日记后自动判断是否需要更新。",
   "feature_tags": ["impressions-core"],
   "replaces": [],

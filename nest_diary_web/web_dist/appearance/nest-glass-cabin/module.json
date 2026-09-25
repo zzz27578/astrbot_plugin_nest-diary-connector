@@ -2,7 +2,7 @@
   "id": "nest-glass-cabin",
   "name": "玻璃小屋",
   "type": "appearance",
-  "version": "0.5.23",
+  "version": "0.6.0",
   "description": "轻玻璃、蓝绿与柔和阴影，适合需要清爽现代感的小窝。",
   "feature_tags": ["webui-appearance", "official-global-appearance"],
   "appearance_scope": "global",

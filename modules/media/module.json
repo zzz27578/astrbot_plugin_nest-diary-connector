@@ -2,7 +2,7 @@
   "id": "media",
   "name": "媒体",
   "type": "module",
-  "version": "0.5.23",
+  "version": "0.6.0",
   "description": "保存图片、语音和附件，可预览图片、记录备注、统计容量，并支持原图发送。",
   "feature_tags": ["media-core"],
   "replaces": [],
