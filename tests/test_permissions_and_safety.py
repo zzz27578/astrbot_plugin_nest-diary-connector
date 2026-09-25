@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import importlib
 import io
+import json
 import os
 import sys
 import tempfile
@@ -17,7 +18,10 @@ from fastapi import HTTPException
 
 from main import PLUGIN_NAME, NestDiaryConnectorPlugin
 from nest_diary_web.models import ServiceUiSettings
-from nest_diary_web.paths import NestPaths, normalize_date
+from nest_diary_web.diary.diary_service import DiaryService
+from nest_diary_web.media.media_service import MediaService
+from nest_diary_web.models import DiaryEntry
+from nest_diary_web.paths import NestPaths, safe_date, strict_date
 from nest_diary_web.settings_service import ServiceSettingsStore
 
 GROUP = "aiocqhttp:GroupMessage:555"
@@ -49,7 +53,8 @@ class FakeEvent:
 
 
 class MiniCron:
-    def __init__(self, jobs: list[SimpleNamespace]) -> None:
+    def __init__(self, jobs: list[SimpleNamespace], running: bool = True) -> None:
+        self.scheduler = SimpleNamespace(running=running)
         self.jobs = list(jobs)
         self.deleted: list[str] = []
         self.added: list[dict] = []
@@ -173,6 +178,13 @@ class FutureJobTest(unittest.TestCase):
         run(plugin._remove_managed_future_jobs())
         self.assertEqual(manager.deleted, ["managed-1"])
 
+    def test_astrbot_shutdown_keeps_managed_jobs(self) -> None:
+        manager = MiniCron([cron_job("managed-1", {"managed_by": PLUGIN_NAME})], running=False)
+        plugin = make_plugin()
+        plugin.context = SimpleNamespace(cron_manager=manager)
+        run(plugin._remove_managed_future_jobs())
+        self.assertEqual(manager.deleted, [])
+
 
 class PathSafetyTest(unittest.TestCase):
     @classmethod
@@ -191,9 +203,14 @@ class PathSafetyTest(unittest.TestCase):
             os.environ["NEST_DATA_DIR"] = cls.previous_data_dir
         cls.temp_dir.cleanup()
 
-    def test_dates_are_normalized_and_traversal_is_rejected(self) -> None:
-        self.assertEqual(normalize_date("2026-9-5"), "2026-09-05")
+    def test_dates_stay_verbatim_and_traversal_is_rejected(self) -> None:
+        self.assertEqual(safe_date("2026-9-5"), "2026-9-5")
+        self.assertEqual(strict_date("2026-9-5"), "2026-9-5")
+        with self.assertRaises(ValueError):
+            strict_date("2026-13-40")
         paths = NestPaths(Path(self.temp_dir.name) / "nest")
+        legacy = paths.diary_file_for_notebook("default", "2026-9-5")
+        self.assertEqual(legacy.relative_to(paths.diary_entries_dir_for_notebook("default")).as_posix(), "2026/9/2026-9-5.md")
         with self.assertRaises(ValueError):
             paths.diary_file_for_notebook("default", "x-y-/../../../../outside")
         with self.assertRaises(ValueError):
@@ -212,6 +229,50 @@ class PathSafetyTest(unittest.TestCase):
         with self.assertRaises(HTTPException):
             self.web._extract_module_zip(buffer.getvalue(), target, (), overwrite=False)
         self.assertFalse(target.exists())
+
+
+def write_legacy_entry(path: Path, date: str, title: str, body: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    meta = {"date": date, "notebook_id": "default", "notebook_name": "默认日记本", "title": title}
+    lines = ["---", *(f"{key}: {json.dumps(value, ensure_ascii=False)}" for key, value in meta.items()), "---", "", f"# {title}", "", body, ""]
+    path.write_text("\n".join(lines), encoding="utf-8")
+
+
+class LegacyDataTest(unittest.TestCase):
+    """0.5.x 写下的日期名千奇百怪，升级后必须照样能列出、读取、搜索、改写和删除。"""
+
+    def test_legacy_diary_names_stay_usable(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            paths = NestPaths(Path(tmp))
+            root = paths.diary_entries_dir_for_notebook("default")
+            write_legacy_entry(root / "2026" / "9" / "2026-9-5.md", "2026-9-5", "非补零日期", "去了海边")
+            write_legacy_entry(root / "2026" / "13" / "2026-13-40.md", "2026-13-40", "错误日期", "月份写错了")
+            write_legacy_entry(root / "2026" / "09" / "2026-09-25（周四）.md", "2026-09-25（周四）", "怪名字", "独角兽咖啡")
+            service = DiaryService(paths)
+            self.assertEqual({entry.title for entry in service.store.list_entries("default")}, {"非补零日期", "错误日期", "怪名字"})
+            for date in ("2026-9-5", "2026-13-40", "2026-09-25（周四）"):
+                self.assertTrue(service.read_by_date(date).body)
+            self.assertTrue(service.search("独角兽咖啡"))
+
+            service.write_diary(DiaryEntry(date="2026-9-5", title="改过了", body="又去了海边"))
+            self.assertIn("改过了", (root / "2026" / "9" / "2026-9-5.md").read_text(encoding="utf-8"))
+            with self.assertRaises(ValueError):
+                service.write_diary(DiaryEntry(date="2026-13-40", title="x", body="y"))
+
+            self.assertTrue(service.delete_diary("2026-09-25（周四）"))
+            self.assertFalse((root / "2026" / "09" / "2026-09-25（周四）.md").exists())
+            self.assertTrue(list((paths.revisions_dir / "default" / "legacy").glob("*/*.md")))
+
+    def test_legacy_media_folder_is_still_found_by_date(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            paths = NestPaths(Path(tmp))
+            folder = paths.media_dir / "by-date" / "2026" / "09" / "2026-09-25（周四）"
+            folder.mkdir(parents=True)
+            asset = {"sha256": "a" * 64, "original_name": "cat.png", "date": "2026-09-25（周四）"}
+            (folder / "manifest.json").write_text(json.dumps({"date": "2026-09-25（周四）", "assets": [asset]}), encoding="utf-8")
+            media = MediaService(paths)
+            self.assertEqual(len(media.list_by_date("2026-09-25（周四）")["assets"]), 1)
+            self.assertEqual(media.list_by_date("../../x")["assets"], [])
 
 
 class SettingsCacheTest(unittest.TestCase):

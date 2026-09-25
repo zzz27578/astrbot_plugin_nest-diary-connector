@@ -11,15 +11,25 @@ import uuid
 
 
 SAFE_ID_RE = re.compile(r"[^A-Za-z0-9_.-]+")
+DATE_RE = re.compile(r"\d+-\d+-\d+")
 
 
-def normalize_date(value: str) -> str:
-    # Dates become directory names, so anything but a real YYYY-MM-DD could escape the data dir.
+def safe_date(value: str) -> str:
+    # Dates become directory names, so only digits and hyphens may pass. The text is kept verbatim:
+    # entries saved by older versions (e.g. "2026-9-5") must resolve to the exact files they live in.
     text = str(value or "").strip()
+    if not DATE_RE.fullmatch(text):
+        raise ValueError(f"日期格式必须是 YYYY-MM-DD：{text}")
+    return text
+
+
+def strict_date(value: str) -> str:
+    text = safe_date(value)
     try:
-        return datetime.strptime(text, "%Y-%m-%d").strftime("%Y-%m-%d")
+        datetime.strptime(text, "%Y-%m-%d")
     except ValueError:
         raise ValueError(f"日期格式必须是 YYYY-MM-DD：{text}") from None
+    return text
 
 
 def atomic_write_text(path: Path, text: str) -> None:
@@ -125,17 +135,21 @@ class NestPaths:
 
     def diary_file_for_notebook(self, notebook_id: str, date: str) -> Path:
         notebook_id = safe_package_id(notebook_id)
-        date = normalize_date(date)
+        date = safe_date(date)
         year, month, _day = date.split("-")
         return self.diary_entries_dir_for_notebook(notebook_id) / year / month / f"{date}.md"
 
     def revision_dir_for_notebook(self, notebook_id: str, date: str) -> Path:
         notebook_id = safe_package_id(notebook_id)
-        date = normalize_date(date)
+        try:
+            date = safe_date(date)
+        except ValueError:
+            # Entries saved under non-date names by older versions still get a snapshot before delete.
+            return self.revisions_dir / notebook_id / "legacy" / safe_package_id(date, "unknown")
         return self.revisions_dir / notebook_id / date[:4] / date[5:7] / date
 
     def legacy_diary_file(self, date: str) -> Path:
-        date = normalize_date(date)
+        date = safe_date(date)
         return self.diary_dir / date[:4] / date[5:7] / f"{date}.md"
 
     def ensure_all(self) -> None:

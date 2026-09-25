@@ -3,6 +3,7 @@
 import copy
 import json
 import secrets
+import time
 from dataclasses import asdict
 
 from nest_diary_web.models import SecuritySettings, ServiceUiSettings
@@ -14,20 +15,23 @@ class ServiceSettingsStore:
         self.paths = paths
         self.paths.ensure_all()
         self.path = self.paths.settings_dir / "service-ui.json"
-        self._cache: tuple[tuple[int, int, int], ServiceUiSettings] | None = None
+        self._cache: tuple[tuple[int, int, int], ServiceUiSettings, float] | None = None
 
     def load(self) -> ServiceUiSettings:
         try:
             stat = self.path.stat()
         except FileNotFoundError:
             return self._normalize(ServiceUiSettings())
-        # Saves replace the file atomically, so st_ino changes even when coarse Windows mtimes do not.
+        # Saves replace the file atomically, so st_ino changes even when coarse mtimes do not;
+        # the short expiry covers filesystems that report no inode numbers.
         key = (stat.st_ino, stat.st_mtime_ns, stat.st_size)
-        if self._cache is None or self._cache[0] != key:
+        now = time.monotonic()
+        if self._cache is None or self._cache[0] != key or now - self._cache[2] > 2.0:
             data = json.loads(self.path.read_text(encoding="utf-8"))
             defaults = asdict(ServiceUiSettings())
-            defaults.update(data)
-            self._cache = (key, self._normalize(ServiceUiSettings(**defaults)))
+            # Keys left by other versions must not make the whole settings file unreadable.
+            defaults.update({name: value for name, value in data.items() if name in defaults})
+            self._cache = (key, self._normalize(ServiceUiSettings(**defaults)), now)
         # Callers mutate and re-save what they get, so never hand out the cached instance itself.
         return copy.deepcopy(self._cache[1])
 

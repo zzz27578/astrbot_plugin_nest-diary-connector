@@ -4,7 +4,7 @@ from nest_diary_web.diary.markdown_store import MarkdownDiaryStore
 from nest_diary_web.diary.notebook_service import NotebookService
 from nest_diary_web.diary.revision_service import RevisionService
 from nest_diary_web.models import DiaryEntry
-from nest_diary_web.paths import NestPaths, normalize_date
+from nest_diary_web.paths import NestPaths, strict_date
 from nest_diary_web.search.search_service import SearchService
 
 
@@ -18,7 +18,7 @@ class DiaryService:
         self.rebuild_index()
 
     def write_diary(self, entry: DiaryEntry, reason: str = "") -> DiaryEntry:
-        entry.date = normalize_date(entry.date)
+        entry.date = strict_date(entry.date)
         notebook = self.notebooks.ensure(
             entry.notebook_id or "default",
             name=entry.notebook_name,
@@ -54,10 +54,10 @@ class DiaryService:
         return self.store.read(date, notebook_id=notebook_id)
 
     def delete_diary(self, date: str, reason: str = "", notebook_id: str = "default") -> bool:
-        diary_path = self.paths.diary_file_for_notebook(notebook_id, date)
-        if not diary_path.exists():
-            if notebook_id == "default":
-                diary_path = self.paths.legacy_diary_file(date)
+        try:
+            diary_path = self.store.locate(date, notebook_id)
+        except FileNotFoundError:
+            return False
         if not diary_path.exists():
             return False
         self.revisions.snapshot(

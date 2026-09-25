@@ -39,10 +39,35 @@ class MarkdownDiaryStore:
         atomic_write_text(path, "\n".join(lines))
         return path
 
+    def locate(self, date: str, notebook_id: str = "default") -> Path:
+        try:
+            path = self.paths.diary_file_for_notebook(notebook_id, date)
+            if not path.exists() and notebook_id == "default":
+                path = self.paths.legacy_diary_file(date)
+            return path
+        except ValueError:
+            # Older versions accepted any "a-b-c" date; those files stay reachable by their exact name.
+            for root in self._roots(notebook_id):
+                for candidate in root.glob("*/*/*.md"):
+                    if candidate.stem == date:
+                        return candidate
+            raise FileNotFoundError(f"Diary entry not found: {date}") from None
+
     def read(self, date: str, notebook_id: str = "default") -> DiaryEntry:
-        path = self.paths.diary_file_for_notebook(notebook_id, date)
-        if not path.exists() and notebook_id == "default":
-            path = self.paths.legacy_diary_file(date)
+        return self._read_path(self.locate(date, notebook_id), notebook_id)
+
+    def _roots(self, notebook_id: str | None) -> list[Path]:
+        roots = []
+        if notebook_id:
+            roots.append(self.paths.diary_entries_dir_for_notebook(notebook_id))
+            if notebook_id == "default":
+                roots.append(self.paths.diary_dir)
+        else:
+            roots.extend(path / "entries" for path in self.paths.diary_notebooks_dir.iterdir() if path.is_dir())
+            roots.append(self.paths.diary_dir)
+        return roots
+
+    def _read_path(self, path: Path, notebook_id: str) -> DiaryEntry:
         text = path.read_text(encoding="utf-8")
         _prefix, meta_text, body_text = text.split("---", 2)
         meta = {}
@@ -75,16 +100,8 @@ class MarkdownDiaryStore:
 
     def list_entries(self, notebook_id: str | None = None) -> list[DiaryEntry]:
         entries: list[DiaryEntry] = []
-        roots = []
-        if notebook_id:
-            roots.append(self.paths.diary_entries_dir_for_notebook(notebook_id))
-            if notebook_id == "default":
-                roots.append(self.paths.diary_dir)
-        else:
-            roots.extend(path / "entries" for path in self.paths.diary_notebooks_dir.iterdir() if path.is_dir())
-            roots.append(self.paths.diary_dir)
         seen: set[tuple[str, str]] = set()
-        for root in roots:
+        for root in self._roots(notebook_id):
             if not root.exists():
                 continue
             current_notebook = root.parent.name if root.parent.parent == self.paths.diary_notebooks_dir else "default"
@@ -94,15 +111,16 @@ class MarkdownDiaryStore:
                     continue
                 seen.add(key)
                 try:
-                    entries.append(self.read(path.stem, current_notebook))
+                    entries.append(self._read_path(path, current_notebook))
                 except Exception:
                     continue
         return sorted(entries, key=lambda entry: (entry.date, entry.notebook_name, entry.notebook_id), reverse=True)
 
     def delete(self, date: str, notebook_id: str = "default") -> bool:
-        path = self.paths.diary_file_for_notebook(notebook_id, date)
-        if not path.exists() and notebook_id == "default":
-            path = self.paths.legacy_diary_file(date)
+        try:
+            path = self.locate(date, notebook_id)
+        except FileNotFoundError:
+            return False
         if not path.exists():
             return False
         path.unlink()

@@ -627,8 +627,7 @@ class NestDiaryConnectorPlugin(Star):
     async def terminate(self):
         if self._future_task_sync_task:
             self._future_task_sync_task.cancel()
-        # Disabled/uninstalled plugins must not leave daily jobs that wake the agent with missing tools;
-        # a reload or restart re-mounts them through request_future_task_sync().
+        # A disabled or uninstalled plugin must not leave daily jobs that wake the agent without its tools.
         await self._remove_managed_future_jobs()
         if self._web_server:
             self._web_server.should_exit = True
@@ -1030,7 +1029,9 @@ class NestDiaryConnectorPlugin(Star):
 
     async def _remove_managed_future_jobs(self) -> None:
         cron_mgr = getattr(self.context, "cron_manager", None)
-        if cron_mgr is None:
+        # AstrBot stops its scheduler before terminating plugins on shutdown, so a stopped scheduler
+        # means a restart: keep the jobs. A running one means disable/uninstall/reload: retire them.
+        if getattr(getattr(cron_mgr, "scheduler", None), "running", False) is not True:
             return
 
         async def remove_all() -> None:

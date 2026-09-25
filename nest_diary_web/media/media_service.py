@@ -7,7 +7,7 @@ import shutil
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from nest_diary_web.paths import NestPaths, normalize_date, atomic_write_text
+from nest_diary_web.paths import NestPaths, atomic_write_text, safe_date, strict_date
 
 try:
     from PIL import Image
@@ -28,6 +28,7 @@ class MediaService:
         note: str | None = None,
         storage_strategy: str = "copy",
     ) -> dict:
+        date = strict_date(date)
         source = Path(source_path)
         digest = self._sha256(source)
         suffix = source.suffix.lower()
@@ -76,9 +77,19 @@ class MediaService:
         return self.paths.media_dir / "blobs" / "sha256" / digest[:2] / digest[2:4] / f"{digest}{suffix}"
 
     def _manifest_path(self, date: str) -> Path:
-        date = normalize_date(date)
+        date = safe_date(date)
         year, month, _day = date.split("-")
         return self.paths.media_dir / "by-date" / year / month / date / "manifest.json"
+
+    def _existing_manifest_path(self, date: str) -> Path | None:
+        try:
+            return self._manifest_path(date)
+        except ValueError:
+            # Media saved by older versions under a non-date folder name is matched by exact name only.
+            for path in (self.paths.media_dir / "by-date").glob("*/*/*/manifest.json"):
+                if path.parent.name == date:
+                    return path
+            return None
 
     def _read_manifest(self, path: Path, date: str) -> dict:
         if not path.exists():
@@ -105,7 +116,8 @@ class MediaService:
 
     def list_by_date(self, date: str) -> dict:
         organization = self.load_organization()
-        manifest = self._read_manifest(self._manifest_path(date), date)
+        path = self._existing_manifest_path(date)
+        manifest = self._read_manifest(path, date) if path else {"date": date, "assets": []}
         manifest["assets"] = [
             self._with_output_metadata(asset, date, organization) for asset in manifest.get("assets", [])
         ]
