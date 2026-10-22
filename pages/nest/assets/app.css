@@ -244,6 +244,10 @@ a {
   width: min(1440px, 100%);
 }
 
+.main:has(#view-memos:not([hidden])) {
+  padding-bottom: 24px;
+}
+
 .view-panel[hidden] {
   display: none !important;
 }
@@ -1154,7 +1158,7 @@ textarea {
 .memos-page {
   display: grid;
   gap: 12px;
-  min-height: calc(100vh - 46px);
+  grid-template-rows: auto auto auto;
 }
 
 .memos-topbar {
@@ -1169,7 +1173,11 @@ textarea {
 
 .memo-board {
   position: relative;
-  min-height: calc(100vh - 168px);
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  height: var(--memo-board-height, 480px);
+  min-height: 0;
   padding: 24px;
   overflow: hidden;
   border: 10px solid #7b4b2a;
@@ -1188,9 +1196,16 @@ textarea {
 }
 
 .memo-board.editor-open .memo-note-grid {
-  opacity: 0.26;
-  filter: saturate(0.82);
-  pointer-events: none;
+  display: none;
+}
+
+.memo-board.editor-open {
+  height: auto;
+}
+
+.memo-board.editor-open .memo-editor-page {
+  position: relative;
+  inset: auto;
 }
 
 .memo-board::before {
@@ -1205,15 +1220,14 @@ textarea {
 }
 
 .memo-board-rail {
-  position: absolute;
-  right: 18px;
-  top: 18px;
+  position: relative;
+  flex: none;
   z-index: 2;
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
   justify-content: flex-end;
-  max-width: min(560px, calc(100% - 36px));
+  max-width: 100%;
 }
 
 .memo-stat {
@@ -1233,7 +1247,8 @@ textarea {
 }
 
 .memo-stat span {
-  color: rgba(59, 42, 26, 0.72);
+  color: inherit;
+  opacity: 0.78;
   font-size: 12px;
   font-weight: 900;
 }
@@ -1244,13 +1259,58 @@ textarea {
 }
 
 .memo-note-grid {
+  --memo-card-height: 230px;
   position: relative;
   z-index: 1;
   display: grid;
+  flex: 1;
+  min-height: 0;
   grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  grid-template-rows: repeat(var(--memo-rows, 1), var(--memo-card-height));
   gap: clamp(18px, 2.1vw, 34px);
   align-content: start;
-  padding: 72px 8px 12px;
+  padding: 12px 8px;
+}
+
+.memo-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 8px 12px;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+}
+
+.memo-pagination .button {
+  min-height: 44px;
+  min-width: 88px;
+  cursor: pointer;
+}
+
+.memo-pagination .button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.memo-pagination .button:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.memo-page-label {
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.memo-page-total {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .memo-note {
@@ -1258,7 +1318,8 @@ textarea {
   --memo-y: 0px;
   --memo-rot: 0deg;
   position: relative;
-  min-height: 190px;
+  min-height: 0;
+  height: var(--memo-card-height, 230px);
   display: grid;
   gap: 10px;
   padding: 24px 16px 14px;
@@ -1418,6 +1479,10 @@ textarea {
 }
 
 .memo-note-tags span {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   padding: 3px 7px;
   border: 1px solid rgba(43, 42, 37, 0.18);
   border-radius: 999px;
@@ -1430,6 +1495,11 @@ textarea {
 .memo-note-actions {
   justify-content: flex-end;
   margin-top: auto;
+}
+
+.memo-note-tags {
+  max-height: 28px;
+  overflow: hidden;
 }
 
 .memo-note-actions .icon-button {
@@ -3284,6 +3354,29 @@ details[open] > *:not(summary) {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
+  .app:has(#view-memos:not([hidden])) .nav {
+    min-width: 0;
+    gap: 10px;
+    padding-block: 12px;
+  }
+
+  .app:has(#view-memos:not([hidden])) .nav-links {
+    min-width: 0;
+    max-width: 100%;
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding-bottom: 4px;
+  }
+
+  .app:has(#view-memos:not([hidden])) .nav-link-group {
+    flex: none;
+  }
+
+  .app:has(#view-memos:not([hidden])) .nav-link {
+    min-height: 44px;
+  }
+
   .grid.two,
   .grid.three,
   .home-hero,
@@ -3340,6 +3433,38 @@ details[open] > *:not(summary) {
 }
 
 @media (max-width: 620px) {
+  .app:has(#view-memos:not([hidden])) .nav {
+    padding-block: 8px;
+  }
+
+  .main:has(#view-memos:not([hidden])) {
+    padding-top: 12px;
+  }
+
+  .memos-topbar {
+    margin-bottom: 0;
+    padding-bottom: 0;
+  }
+
+  .memos-topbar h1 {
+    font-size: 32px;
+  }
+
+  .memo-stat {
+    flex: 1;
+    min-width: 0;
+    min-height: 36px;
+    padding: 6px;
+    gap: 4px;
+  }
+
+  .memo-stat span {
+    font-size: 11px;
+  }
+
+  .memo-stat strong {
+    font-size: 16px;
+  }
   .main,
   .nav {
     padding: 18px;
@@ -3412,7 +3537,7 @@ details[open] > *:not(summary) {
   }
 
   .memo-board {
-    min-height: 360px;
+    min-height: 0;
     padding: 12px;
     border-width: 7px;
   }
@@ -3423,11 +3548,22 @@ details[open] > *:not(summary) {
     top: auto;
     max-width: none;
     justify-content: flex-start;
-    margin-bottom: 12px;
+    margin-bottom: 0;
   }
 
   .memo-note-grid {
-    padding-top: 8px;
+    --memo-card-height: 210px;
+    padding-top: 12px;
+  }
+
+  .memo-note {
+    gap: 8px;
+    padding: 22px 14px 12px;
+  }
+
+  .memo-pagination {
+    gap: 8px;
+    padding-inline: 8px;
   }
 
   .memo-editor-page {

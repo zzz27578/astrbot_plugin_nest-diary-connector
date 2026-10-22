@@ -47,7 +47,12 @@ from nest_diary_web.settings_service import SecuritySettingsStore, ServiceSettin
 
 
 PLUGIN_NAME = "astrbot_plugin_nest_diary_connector"
-PLUGIN_VERSION = "0.6.0"
+PLUGIN_VERSION = "0.6.1"
+DIARY_APPEND_POLICY = (
+    "同一日记本、同一天再次写日记时默认续写，保留先前内容。写入前用 read_diary 读取该日期，"
+    "只把尚未记录的新事件写入 body，mode 使用 append；不要重述已写内容。"
+    "只有用户明确要求重写或更正整篇时才用 mode=replace，并先读取旧文，保留未要求删除的事实。"
+)
 DEFAULT_DIARY_WRITE_PROMPT = (
     "请把可用上下文整理成一篇小窝日记。标题要概括当天记忆的意义；正文要包含发生了什么、"
     "为什么重要、你的主观评价与情绪、相关人物、未来线索。不要写成聊天流水账，不要编造。"
@@ -120,7 +125,7 @@ class EmbeddedNestClient:
             importance=payload.get("importance", 3),
             source=payload.get("source", "bot"),
         )
-        saved = self.diary_service.write_diary(entry, reason=payload.get("reason", ""))
+        saved = self.diary_service.write_diary(entry, reason=payload.get("reason", ""), mode=payload.get("mode", "append"))
         touched = []
         if (
             ui_settings.enable_impressions_module
@@ -146,6 +151,8 @@ class EmbeddedNestClient:
             "message_type": saved.message_type,
             "session_id": saved.session_id,
             "impressions_touched": [item.name for item in touched],
+            "write_mode": payload.get("mode", "append"),
+            "revision": saved.revision,
         }
 
     async def read_diary(self, date: str, notebook_id: str = "default") -> dict:
@@ -361,6 +368,7 @@ class NestDiaryTools:
         platform_id: str = "",
         message_type: str = "",
         session_id: str = "",
+        mode: str = "append",
     ) -> dict:
         return await self.client.write_diary(
             {
@@ -379,6 +387,7 @@ class NestDiaryTools:
                 "media_refs": media_refs or [],
                 "reason": reason,
                 "intent": "write_diary",
+                "mode": mode,
                 "source": "bot",
             }
         )
@@ -1125,6 +1134,7 @@ class NestDiaryConnectorPlugin(Star):
             f"目标日记本：{notebook_name}（ID：{notebook_id}）。",
             "依据当前会话、已有小窝记忆和稳定证据判断是否需要写今天的日记；材料不足时不要编造，也不要强行写入。",
             f"需要写入时调用 write_diary，notebook_id 必须使用 {notebook_id}，reason 使用 nightly_archive。",
+            DIARY_APPEND_POLICY,
             push_instruction,
         ]
         # Cron runs never pass through on_llm_request hooks, so WebUI writing rules must ride inside the note.
@@ -1405,6 +1415,7 @@ class NestDiaryConnectorPlugin(Star):
             if diary_prompt:
                 parts.extend(["<写日记要求规范>", diary_prompt, "</写日记要求规范>"])
             parts.append("写日记必须基于当前会话或可检索到的稳定证据；材料不足时不要编造，不要把系统规范写进日记正文。")
+            parts.append(DIARY_APPEND_POLICY)
         else:
             parts.append("日记模块当前关闭，不得调用 write_diary、read_diary、search_diary 或 push_diary。")
         if bool(getattr(ui_settings, "enable_media_module", True)):
@@ -2256,19 +2267,21 @@ class NestDiaryConnectorPlugin(Star):
         media_refs: str = "",
         reason: str = "",
         notebook_id: str = "",
+        mode: str = "append",
     ):
-        """写入或更新某一天的日记模块记录。
+        """写入某一天的日记，已有内容默认续写保留。先 read_diary，只提交尚未记录的新事件；用户明确要求重写时才使用 replace。
 
         Args:
             date(string): 日记日期，格式 YYYY-MM-DD。
             title(string): bot 自拟标题，用一句话概括当天记忆，不要直接使用日期。
-            body(string): 日记正文，要包含事件、意义、主观评价、情绪、相关人物和未来线索。
+            body(string): 续写时仅提交新内容，包含事件、意义、主观评价、情绪、相关人物和未来线索，不要重复旧文。
             mood(string): 情绪词，多个用逗号分隔。
             tags(string): 检索标签，多个用逗号分隔。
             people(string): 相关人物，多个用逗号分隔。
             media_refs(string): 图片、语音或附件引用，每行一个，可为空。
             reason(string): 写入原因，例如 nightly_archive、manual_update、memory_review。
             notebook_id(string): 可选日记本 ID；未来任务会指定，普通对话留空使用当前会话日记本。
+            mode(string): 默认 append 保留旧文并续写；仅用户明确要求重写或更正整篇时用 replace。
         """
         if not self._diary_module_enabled():
             return self._module_disabled_message("日记")
@@ -2301,6 +2314,7 @@ class NestDiaryConnectorPlugin(Star):
                 people=_split_words(people),
                 media_refs=_split_lines(media_refs),
                 reason=reason,
+                mode=mode,
                 **notebook,
             )
             saved_date = result.get("date", date)

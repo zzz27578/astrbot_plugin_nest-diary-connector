@@ -14,7 +14,7 @@ Available tools:
 - `nest_status`: check whether 小窝, the diary module, and WebUI are reachable.
 - `search_diary`: retrieve relevant diary candidates by keyword, person, event, date clue, or emotion.
 - `read_diary`: read one known date.
-- `write_diary`: create or revise one date's diary entry with an agent-authored title.
+- `write_diary`: create or append to one date's diary; use `mode=replace` only for an explicitly requested rewrite.
 - `push_diary`: push a known date's diary to the configured target as text or image.
 - `attach_media`: archive a file that already exists at an accessible path, with hidden note metadata for source, situation, bot evaluation, and known user evaluation.
 - `list_impressions`: list known people impressions.
@@ -60,7 +60,9 @@ Do not claim certainty from vibes.
 
 ### B. User asks to write today's diary
 
-Use `write_diary`. A good entry includes:
+First call `read_diary(date, notebook_id)` for the target date and notebook. If it exists, preserve its events and submit only new, unrecorded material to `write_diary(mode="append")`. A missing entry means this is the first write. Repeated requests and scheduled archives continue the same day's diary instead of replacing earlier events. Do not repeat the old text in the new body. If there is no new material, skip the write.
+
+Only use `mode="replace"` when the user explicitly asks to rewrite or correct the entry. Read the old entry first and retain facts the user did not ask to remove. A good entry includes:
 
 - A concise title written by the agent. The title summarizes the memory; it must not be just the date.
 - What happened.

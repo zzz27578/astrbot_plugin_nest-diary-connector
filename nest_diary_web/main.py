@@ -9,6 +9,7 @@ import zipfile
 from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Literal
 from urllib.parse import urlparse
 
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, UploadFile
@@ -46,7 +47,7 @@ from .version_service import VersionService
 from .web.routes import create_web_router, mount_static
 from .web_auth import WebSessionAuth
 
-APP_VERSION = "0.6.0"
+APP_VERSION = "0.6.1"
 settings = load_settings()
 app = FastAPI(title="Nest Service", version=APP_VERSION)
 WEB_DIST_DIR = Path(__file__).resolve().parent / "web_dist"
@@ -766,6 +767,7 @@ class DiaryWriteRequest(BaseModel):
     reason: str = ""
     intent: str = "write_diary"
     idempotency_key: str | None = None
+    mode: Literal["append", "replace"] = "append"
 
 
 def require_bot_token(authorization: str | None = Header(default=None)) -> None:
@@ -847,7 +849,7 @@ async def write_diary(
         importance=payload.importance,
         source=payload.source,
     )
-    saved = diary_service.write_diary(entry, reason=payload.reason)
+    saved = diary_service.write_diary(entry, reason=payload.reason, mode=payload.mode)
     touched = _touch_impressions_from_diary(saved)
     return {
         "status": "ok",
@@ -1383,7 +1385,7 @@ async def ui_write_diary(payload: DiaryWriteRequest, _session: None = Depends(re
         importance=payload.importance,
         source=payload.source or "admin",
     )
-    saved = diary_service.write_diary(entry, reason=payload.reason or "web_app_update")
+    saved = diary_service.write_diary(entry, reason=payload.reason or "web_app_update", mode="replace")
     touched = _touch_impressions_from_diary(saved)
     return {"status": "ok", "entry": _entry_payload(saved), "impressions_touched": [item.name for item in touched]}
 

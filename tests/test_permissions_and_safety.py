@@ -254,7 +254,7 @@ class LegacyDataTest(unittest.TestCase):
                 self.assertTrue(service.read_by_date(date).body)
             self.assertTrue(service.search("独角兽咖啡"))
 
-            service.write_diary(DiaryEntry(date="2026-9-5", title="改过了", body="又去了海边"))
+            service.write_diary(DiaryEntry(date="2026-9-5", title="改过了", body="又去了海边"), mode="replace")
             self.assertIn("改过了", (root / "2026" / "9" / "2026-9-5.md").read_text(encoding="utf-8"))
             with self.assertRaises(ValueError):
                 service.write_diary(DiaryEntry(date="2026-13-40", title="x", body="y"))

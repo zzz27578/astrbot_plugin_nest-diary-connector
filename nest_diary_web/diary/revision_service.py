@@ -4,7 +4,7 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-from nest_diary_web.paths import NestPaths
+from nest_diary_web.paths import NestPaths, atomic_write_text
 
 
 class RevisionService:
@@ -13,7 +13,7 @@ class RevisionService:
         self.paths.ensure_all()
 
     def snapshot(self, date: str, content: str, reason: str, source: str, notebook_id: str = "default") -> Path:
-        timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
         target_dir = self.paths.revision_dir_for_notebook(notebook_id, date)
         target_dir.mkdir(parents=True, exist_ok=True)
         path = target_dir / f"{timestamp}.md"
@@ -28,7 +28,7 @@ class RevisionService:
         for key, value in metadata.items():
             lines.append(f"{key}: {json.dumps(value, ensure_ascii=False)}")
         lines.extend(["---", "", content.rstrip(), ""])
-        path.write_text("\n".join(lines), encoding="utf-8")
+        atomic_write_text(path, "\n".join(lines))
         return path
 
     def list_revisions(self) -> list[dict]:

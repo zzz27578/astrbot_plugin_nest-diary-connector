@@ -1,4 +1,4 @@
-const APP_VERSION = "0.6.0";
+const APP_VERSION = "0.6.1";
 const PLUGIN_PAGE_BRIDGE = window.AstrBotPluginPage || null;
 const PLUGIN_PAGE_MODULE_URL = new URL(import.meta.url);
 let pluginPageContext = null;
@@ -85,6 +85,8 @@ const state = {
   mediaFolderEditingId: "",
   mediaNoteEditing: false,
   memos: [],
+  memoPage: 1,
+  memoPageSize: 1,
   memoSummary: { count: 0, pinned: 0, archived: 0, sensitive: 0 },
   selectedMemoId: initialMemoFromLocation(),
   memoEditorOpen: false,
@@ -518,6 +520,10 @@ function updateShell() {
   document.querySelectorAll("[data-panel]").forEach((node) => {
     node.hidden = node.dataset.panel !== state.view;
   });
+  if (state.view === "memos" && window.matchMedia("(max-width: 980px)").matches) {
+    const active = navLinks?.querySelector('[data-nav="memos"]');
+    if (active) navLinks.scrollLeft += active.getBoundingClientRect().left - navLinks.getBoundingClientRect().left - (navLinks.clientWidth - active.offsetWidth) / 2;
+  }
   const notice = document.getElementById("notice-slot");
   notice.innerHTML = `
     <div class="notification-stack" aria-live="polite">
@@ -779,7 +785,7 @@ async function setView(view, options = {}) {
 document.addEventListener(
   "click",
   (event) => {
-    const target = event.target.closest("[data-view], [data-date], [data-open-write], [data-close-write], [data-edit-date], [data-search-query], [data-impression-name], [data-new-impression], [data-media-open], [data-media-close], [data-media-note-edit], [data-media-folder-create], [data-media-folder-edit], [data-media-folder-modal-close], [data-media-trash], [data-media-restore], [data-media-delete], [data-media-open-original], [data-media-toggle-float], [data-media-mode], [data-media-folder-collapse], [data-media-folder-expand], [data-media-folder-open], [data-media-folder-close], [data-media-dropdown], [data-memo-new], [data-memo-select], [data-memo-detail-back], [data-memo-pin], [data-memo-archive], [data-memo-delete], [data-memo-reveal], [data-memo-archived-toggle], [data-settings-section], [data-module-settings], [data-settings-back], [data-module-filter], [data-module-install-open], [data-module-install-close], [data-version-check], [data-version-update], [data-style-select], [data-onboarding-advance], [data-onboarding-next], [data-onboarding-prev], [data-onboarding-finish], [data-onboarding-close], [data-onboarding-replay], [data-notebook-add], [data-notebook-delete], [data-t2i-open], [data-t2i-close], [data-t2i-select], [data-t2i-custom-toggle], [data-t2i-custom-save], [data-module-uninstall]");
+    const target = event.target.closest("[data-view], [data-date], [data-open-write], [data-close-write], [data-edit-date], [data-search-query], [data-impression-name], [data-new-impression], [data-media-open], [data-media-close], [data-media-note-edit], [data-media-folder-create], [data-media-folder-edit], [data-media-folder-modal-close], [data-media-trash], [data-media-restore], [data-media-delete], [data-media-open-original], [data-media-toggle-float], [data-media-mode], [data-media-folder-collapse], [data-media-folder-expand], [data-media-folder-open], [data-media-folder-close], [data-media-dropdown], [data-memo-new], [data-memo-page], [data-memo-select], [data-memo-detail-back], [data-memo-pin], [data-memo-archive], [data-memo-delete], [data-memo-reveal], [data-memo-archived-toggle], [data-settings-section], [data-module-settings], [data-settings-back], [data-module-filter], [data-module-install-open], [data-module-install-close], [data-version-check], [data-version-update], [data-style-select], [data-onboarding-advance], [data-onboarding-next], [data-onboarding-prev], [data-onboarding-finish], [data-onboarding-close], [data-onboarding-replay], [data-notebook-add], [data-notebook-delete], [data-t2i-open], [data-t2i-close], [data-t2i-select], [data-t2i-custom-toggle], [data-t2i-custom-save], [data-module-uninstall]");
     if (!target) return;
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
     if (
@@ -935,6 +941,10 @@ document.addEventListener(
       newMemo();
       return;
     }
+    if (target.dataset.memoPage !== undefined) {
+      if (!target.disabled) changeMemoPage(Number(target.dataset.memoPage));
+      return;
+    }
     if (target.dataset.memoSelect) {
       if (Date.now() < state.memoSuppressClickUntil) return;
       selectMemo(target.dataset.memoSelect);
@@ -964,6 +974,7 @@ document.addEventListener(
     }
     if (target.dataset.memoArchivedToggle !== undefined) {
       state.memoIncludeArchived = !state.memoIncludeArchived;
+      state.memoPage = 1;
       state.selectedMemoId = "";
       syncRouteForState("memos", true);
       renderMemos();
@@ -1941,6 +1952,7 @@ async function loadMemos() {
 
 async function renderMemos() {
   await loadMemos();
+  memoBoardObserver?.disconnect();
   const selected = state.memos.find((item) => item.id === state.selectedMemoId) || null;
   const showEditor = state.memoEditorOpen || Boolean(selected);
   panel("memos").innerHTML = `
@@ -1959,7 +1971,87 @@ async function renderMemos() {
       ${memoBoardPage(showEditor, selected)}
     </section>
   `;
+  if (!showEditor) {
+    // Make the panel and responsive navigation visible before measuring available space.
+    updateShell();
+    layoutMemoBoard();
+    memoBoardObserver = new ResizeObserver(() => layoutMemoBoard());
+    memoBoardObserver.observe(panel("memos"));
+  }
 }
+
+let memoBoardObserver = null;
+
+function memoPageCount() {
+  return Math.max(1, Math.ceil(state.memos.length / state.memoPageSize));
+}
+
+function memoPageItems() {
+  state.memoPage = Math.max(1, Math.min(state.memoPage, memoPageCount()));
+  const start = (state.memoPage - 1) * state.memoPageSize;
+  return state.memos.slice(start, start + state.memoPageSize);
+}
+
+function memoPagination() {
+  const pages = memoPageCount();
+  return `
+    <nav class="memo-pagination" aria-label="备忘录分页">
+      <button class="button ghost" data-memo-page="${state.memoPage - 1}" type="button" ${state.memoPage <= 1 ? "disabled" : ""}>上一页</button>
+      <span class="memo-page-label" role="status" aria-live="polite">第 <strong>${state.memoPage}</strong> / ${pages} 页<span class="memo-page-total">共 ${state.memos.length} 张纸条</span></span>
+      <button class="button ghost" data-memo-page="${state.memoPage + 1}" type="button" ${state.memoPage >= pages ? "disabled" : ""}>下一页</button>
+    </nav>
+  `;
+}
+
+function updateMemoPage() {
+  const root = panel("memos");
+  const grid = root.querySelector(".memo-note-grid");
+  if (!grid) return;
+  grid.innerHTML = state.memos.length ? memoPageItems().map(memoNoteCard).join("") : `<div class="memo-empty">还没有纸条，点右上角新纸条钉第一张。</div>`;
+  const pager = root.querySelector(".memo-pagination");
+  if (pager) pager.outerHTML = memoPagination();
+  requestAnimationFrame(constrainMemoPlacements);
+}
+
+function changeMemoPage(page) {
+  const forward = page > state.memoPage;
+  state.memoPage = Math.max(1, Math.min(page, memoPageCount()));
+  updateMemoPage();
+  const root = panel("memos");
+  const preferred = root.querySelector(`[data-memo-page="${state.memoPage + (forward ? 1 : -1)}"]`);
+  (preferred?.disabled ? root.querySelector("[data-memo-page]:not(:disabled)") : preferred)?.focus({ preventScroll: true });
+}
+
+function layoutMemoBoard() {
+  if (state.view !== "memos") return;
+  const root = panel("memos");
+  const board = root.querySelector(".memo-board:not(.editor-open)");
+  const grid = board?.querySelector(".memo-note-grid");
+  const pager = root.querySelector(".memo-pagination");
+  if (!grid || !pager) return;
+  const style = getComputedStyle(board);
+  const cardHeight = parseFloat(getComputedStyle(grid).getPropertyValue("--memo-card-height")) || 230;
+  const railHeight = board.querySelector(".memo-board-rail").getBoundingClientRect().height;
+  const chrome = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom) + parseFloat(style.borderTopWidth) + parseFloat(style.borderBottomWidth) + railHeight + parseFloat(style.rowGap);
+  const viewport = window.visualViewport?.height || window.innerHeight;
+  const available = viewport - (board.getBoundingClientRect().top + window.scrollY) - pager.getBoundingClientRect().height - 36;
+  board.style.setProperty("--memo-board-height", `${Math.max(chrome + cardHeight + 24, available)}px`);
+  const gridStyle = getComputedStyle(grid);
+  const columns = gridStyle.gridTemplateColumns.split(" ").length;
+  const rowGap = parseFloat(gridStyle.rowGap);
+  const rows = Math.max(1, Math.floor((grid.clientHeight - 24 + rowGap) / (cardHeight + rowGap)));
+  const size = columns * rows;
+  grid.style.setProperty("--memo-rows", rows);
+  if (size !== state.memoPageSize) {
+    const firstItem = (state.memoPage - 1) * state.memoPageSize;
+    state.memoPageSize = size;
+    state.memoPage = Math.floor(firstItem / size) + 1;
+  }
+  updateMemoPage();
+}
+
+window.addEventListener("resize", () => layoutMemoBoard());
+window.visualViewport?.addEventListener("resize", () => layoutMemoBoard());
 
 function memoStat(label, value) {
   return `<div class="memo-stat"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`;
@@ -1995,10 +2087,11 @@ function memoBoardPage(showEditor = false, selected = null) {
         ${memoStat("敏感", state.memoSummary.sensitive || 0)}
       </div>
       <div class="memo-note-grid">
-        ${state.memos.length ? state.memos.map(memoNoteCard).join("") : `<div class="memo-empty">还没有纸条，点右上角新纸条钉第一张。</div>`}
+        ${state.memos.length ? memoPageItems().map(memoNoteCard).join("") : `<div class="memo-empty">还没有纸条，点右上角新纸条钉第一张。</div>`}
       </div>
       ${showEditor ? memoEditorPage(selected) : ""}
     </section>
+    ${showEditor ? "" : memoPagination()}
   `;
 }
 
@@ -2066,6 +2159,24 @@ function memoPlacement(id) {
   return { x: 0, y: 0, rot: memoDefaultRotation(id) };
 }
 
+function boundedMemoPlacement(note, placement) {
+  const grid = note.closest(".memo-note-grid");
+  if (!grid) return placement;
+  return {
+    ...placement,
+    x: Math.max(8 - note.offsetLeft, Math.min(placement.x, grid.clientWidth - note.offsetLeft - note.offsetWidth - 8)),
+    y: Math.max(12 - note.offsetTop, Math.min(placement.y, grid.clientHeight - note.offsetTop - note.offsetHeight - 12)),
+  };
+}
+
+function constrainMemoPlacements() {
+  panel("memos").querySelectorAll(".memo-note").forEach((note) => {
+    const placement = boundedMemoPlacement(note, memoPlacement(note.dataset.memoId));
+    note.style.setProperty("--memo-x", `${placement.x}px`);
+    note.style.setProperty("--memo-y", `${placement.y}px`);
+  });
+}
+
 function memoDefaultRotation(id) {
   const text = String(id || "");
   let hash = 0;
@@ -2098,7 +2209,7 @@ function startMemoDrag(event) {
   const note = event.target.closest(".memo-note[data-memo-id]");
   if (!note || event.target.closest(".memo-note-actions, .icon-button")) return;
   const id = note.dataset.memoId || "";
-  const placement = memoPlacement(id);
+  const placement = boundedMemoPlacement(note, memoPlacement(id));
   state.memoDrag = {
     id,
     note,
@@ -2120,7 +2231,7 @@ function moveMemoDrag(event) {
   const dx = event.clientX - drag.startX;
   const dy = event.clientY - drag.startY;
   if (Math.abs(dx) + Math.abs(dy) > 4) drag.moved = true;
-  const next = { x: drag.originX + dx, y: drag.originY + dy, rot: drag.rot };
+  const next = boundedMemoPlacement(drag.note, { x: drag.originX + dx, y: drag.originY + dy, rot: drag.rot });
   drag.note.style.setProperty("--memo-x", `${next.x}px`);
   drag.note.style.setProperty("--memo-y", `${next.y}px`);
   drag.note.style.setProperty("--memo-rot", `${next.rot}deg`);
@@ -2133,11 +2244,11 @@ function endMemoDrag(event) {
   drag.note.classList.remove("dragging");
   drag.note.releasePointerCapture?.(event.pointerId);
   if (drag.moved) {
-    const next = {
+    const next = boundedMemoPlacement(drag.note, {
       x: drag.originX + event.clientX - drag.startX,
       y: drag.originY + event.clientY - drag.startY,
       rot: drag.rot,
-    };
+    });
     saveMemoPlacement(drag.id, next);
     state.memoSuppressClickUntil = Date.now() + 260;
   }
@@ -2188,6 +2299,9 @@ async function saveMemo(event) {
   const payload = id
     ? await api("/api/ui/memos/update", { method: "POST", body: JSON.stringify({ id, ...body }) })
     : await api("/api/ui/memos", { method: "POST", body: JSON.stringify(body) });
+  await loadMemos();
+  const savedIndex = state.memos.findIndex((item) => item.id === (payload.item?.id || id));
+  if (savedIndex >= 0) state.memoPage = Math.floor(savedIndex / state.memoPageSize) + 1;
   state.selectedMemoId = "";
   state.memoEditorOpen = false;
   state.notice = "备忘录已保存。";

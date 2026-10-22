@@ -443,7 +443,7 @@ def create_web_router(
             importance=max(1, min(int(importance), 5)),
             source="admin",
         )
-        diary_service.write_diary(entry, reason="web_admin_update")
+        diary_service.write_diary(entry, reason="web_admin_update", mode="replace")
         return RedirectResponse(f"/write?date={entry.date}&saved=1", status_code=303)
 
     @router.post("/diary/delete")
